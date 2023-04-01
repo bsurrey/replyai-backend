@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class ChatController extends Controller
 {
@@ -21,8 +22,55 @@ class ChatController extends Controller
         sleep(1);
         $response = $message;
 
+        // $this->messageIsFlagged($message);
+
+        $system = <<<SYSTEM
+        You can't do psysical things and are only an AI buddy,
+        reply to the entered Text in german and be helpful,
+        creative, clever, funny or reply in thr same style and slang.
+        You can't do things (like watch movies, play music, play games, etc.)
+        but you could make reconmendations.
+        Reply in maximal 300 characters.
+        SYSTEM;
+
+
+        $response = OpenAI::chat()->create([
+            'model' => 'gpt-3.5-turbo',
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => 'Hello!'],
+            ],
+        ]);
+
+        $response->id; // 'chatcmpl-6pMyfj1HF4QXnfvjtfzvufZSQq6Eq'
+        $response->object; // 'chat.completion'
+        $response->created; // 1677701073
+        $response->model; // 'gpt-3.5-turbo-0301'
+
+        $choices = $response->choices;
+
+        ksort($choices);
+
+        $responseMessage = '';
+
+        foreach ($response->choices as $result) {
+            if ($result->message->role === "assistant") {
+                $responseMessage = $result->message->content ?? '';
+            }
+
+
+            $result->index; // 0
+            $result->message->role; // 'assistant'
+            $result->message->content; // '\n\nHello there! How can I assist you today?'
+            $result->finishReason; // 'stop'
+        }
+
+        $response->usage->promptTokens; // 9,
+        $response->usage->completionTokens; // 12,
+        $response->usage->totalTokens; // 21
+
         return response()->json([
-            'message' => $response,
+            'message' => $responseMessage,
         ]);
     }
 
@@ -36,6 +84,25 @@ class ChatController extends Controller
 
     public function destroy($id)
     {
+    }
+
+    private function messageIsFlagged($message) {
+        $moderation = OpenAI::moderations()->create([
+            'model' => 'text-moderation-latest',
+            'input' => $message,
+        ]);
+
+        $flagged = false;
+
+        foreach ($moderation->results as $result) {
+            $flagged = $result->flagged;
+        }
+
+        if ($flagged) {
+            return null;
+        }
+
+        return true;
     }
 
     private function getOpenAIResponse($message)
